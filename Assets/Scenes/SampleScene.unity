@@ -487,7 +487,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &114580730
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3469,7 +3469,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1298160976
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5091,7 +5091,8 @@ MonoBehaviour:
   - jointName: Link_6_1
     body: {fileID: 0}
   connectionPort: 25001
-  maxDegreesPerSecond: 20
+  maxDegreesPerSecond: 10
+  manualMode: 1
 --- !u!1 &1732782766 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8619716100382403653, guid: 4a0d3cdac85ce3f49bd445a72303f2d7, type: 3}
