@@ -1,0 +1,11 @@
+/.git/
+/graphify-out/
+/manipulador/
+/__pycache__/
+/gcode_log.txt
+/Assets/
+/Packages/
+/ProjectSettings/
+/.vs/
+/.vscode/
+/.vsconfig
