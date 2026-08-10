@@ -19,7 +19,7 @@ controlador GRBL e espelha o movimento em tempo real no Unity 3D.
 ## Requisitos
 
 - Python 3.10+
-- Dependências: `numpy`, `PyQt6`, `matplotlib`, `pyserial`
+- Dependências: `numpy`, `PyQt6`, `opencv-python`, `pyserial`
 
 ## Como executar
 
@@ -44,7 +44,7 @@ O endereço do Unity (`host`/`porta`) fica em `UnityClient.__init__` em
 | Arquivo | Responsabilidade |
 |---|---|
 | `main.py` | Ponto de entrada: monta as dependências, recupera a posição e inicia a GUI |
-| `gui.py` | Interface PyQt6 (gráfico de trajetória, campos J1–J6 e controles) |
+| `gui.py` | Interface PyQt6 (feed de câmera via OpenCV, campos J1–J6 e controles) |
 | `robot_control.py` | Orquestração: interpolação, movimentos, envio de juntas, recuperação de falha |
 | `ik_craig.py` | Cinemática inversa (método de Craig) |
 | `bezier.py` | Geração da trajetória Bézier em `(x, y, z)` |

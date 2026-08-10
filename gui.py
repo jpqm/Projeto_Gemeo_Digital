@@ -1,46 +1,61 @@
 import threading
-import matplotlib
-matplotlib.use('QtAgg')
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-
+import cv2
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, 
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QGroupBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtGui import QImage, QPixmap
+
+CAMERA_INDEX = 1
+CAMERA_TICK_MS = 30
 
 
-class PlotCanvas(FigureCanvas):
-    """Classe responsável por renderizar o gráfico 3D da trajetória."""
-    def __init__(self, parent=None, width=5, height=5, dpi=100):
-        """Cria a figura 3D e configura os eixos."""
-        fig = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = fig.add_subplot(111, projection='3d')
-        super().__init__(fig)
-        self._configurar_eixos()
+class CameraCanvas(QLabel):
+    """Exibe o feed da webcam via OpenCV."""
 
-    def _configurar_eixos(self):
-        """Define os rótulos e o título do gráfico."""
-        self.axes.set_title("Trajetória do Movimento")
-        self.axes.set_xlabel("Eixo X")
-        self.axes.set_ylabel("Eixo Y")
-        self.axes.set_zlabel("Eixo Z")
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumSize(320, 240)
+        self._placeholder()
 
-    def plot_trajectory(self, x, y, z, limpar=True):
-        """Desenha a trajetória no gráfico 3D."""
-        if limpar:
-            self.axes.clear()
-            self._configurar_eixos()
+        self._cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+        if not self._cap.isOpened():
+            self._cap.release()
+            self._cap = None
+            return
 
-        self.axes.plot(x, y, z, marker='o', linestyle='-', linewidth=2, markersize=3)
-        self.draw()
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._grab)
+        self._timer.start(CAMERA_TICK_MS)
+
+    def _placeholder(self):
+        self.setText("Câmera indisponível")
+        self.setStyleSheet(
+            "background-color: #333; color: #aaa; font-size: 16px;"
+        )
+
+    def _grab(self):
+        ok, frame = self._cap.read()
+        if not ok:
+            return
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb.shape
+        qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
+        self.setPixmap(QPixmap.fromImage(qimg))
+
+    def closeEvent(self, event):
+        if self._cap:
+            self._timer.stop()
+            self._cap.release()
+            self._cap = None
+        super().closeEvent(event)
 
 
 class RobotGUI(QMainWindow):
     """Janela principal do sistema de controle do robô."""
     update_status = pyqtSignal(str)
-    update_plot = pyqtSignal(list, list, list, bool)
 
     def __init__(self, controller):
         """Monta a janela, conecta os sinais e inicia o timer de escuta do Unity."""
@@ -48,30 +63,24 @@ class RobotGUI(QMainWindow):
         self.controller = controller
         self.em_movimento = threading.Event()
 
-        # Configuração de Sinais da UI
         self.update_status.connect(self.set_status)
-        self.update_plot.connect(self.atualizar_grafico)
 
-        # Configuração da Janela
         self.setWindowTitle("Controle do Manipulador com Gêmeo Digital")
         self.resize(800, 500)
 
-        # Layout Principal
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
-        # Timer para escutar interações via Unity
         self.timer_unity = QTimer(self)
         self.timer_unity.timeout.connect(self.verificar_botao_unity)
         self.timer_unity.start(100)
 
-        # Build da Interface
         left_panel = self._criar_painel_esquerdo()
         main_layout.addWidget(left_panel)
 
-        self.canvas = PlotCanvas(self, width=5, height=5)
-        main_layout.addWidget(self.canvas)
+        self.camera = CameraCanvas(self)
+        main_layout.addWidget(self.camera, 1)
 
     def _criar_painel_esquerdo(self) -> QWidget:
         """Monta o painel lateral com os controles e entradas numéricas."""
@@ -79,7 +88,6 @@ class RobotGUI(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         left_panel.setFixedWidth(280)
 
-        # Grupo de Ângulos das Juntas (J1-J6, valores GRBL)
         group_pos = QGroupBox("Ângulos das Juntas")
         grid = QGridLayout()
         self.entradas = {}
@@ -96,13 +104,11 @@ class RobotGUI(QMainWindow):
         group_pos.setLayout(grid)
         left_layout.addWidget(group_pos)
 
-        # Exibição de Status
         self.status_lbl = QLabel("Aguardando comando...")
         self.status_lbl.setStyleSheet("color: gray; font-weight: bold;")
         self.status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         left_layout.addWidget(self.status_lbl)
 
-        # Botões de Ação
         btn_enviar = QPushButton("Enviar Juntas")
         btn_enviar.setMinimumHeight(40)
         btn_enviar.clicked.connect(self.enviar_pos)
@@ -138,15 +144,9 @@ class RobotGUI(QMainWindow):
 
     # --- SLOTS E LÓGICA DE INTERACTION ---
     def set_status(self, text: str):
-        """Atualiza o texto de status na interface."""
         self.status_lbl.setText(text)
 
-    def atualizar_grafico(self, x: list, y: list, z: list, limpar: bool = True):
-        """Slot chamado via sinal para desenhar no canvas."""
-        self.canvas.plot_trajectory(x, y, z, limpar)
-
     def verificar_botao_unity(self):
-        """Verifica se o botão de envio foi pressionado na interface do Unity."""
         unity = self.controller.unity
         serial = self.controller.serial
 
@@ -169,7 +169,6 @@ class RobotGUI(QMainWindow):
             print("=" * 50)
 
     def enviar_pos(self):
-        """Lê os campos J1-J6 e dispara o envio do G1 direto em thread paralela."""
         if self.em_movimento.is_set():
             return
         try:
@@ -183,19 +182,15 @@ class RobotGUI(QMainWindow):
         threading.Thread(target=self._executar_movimento, args=(valores,), daemon=True).start()
 
     def _executar_movimento(self, valores):
-        """Executa o envio dos ângulos das juntas ao GRBL e Unity."""
         self.controller.enviar_juntas(*valores)
         self.em_movimento.clear()
         self.update_status.emit("Comando de juntas enviado!")
 
     def home(self):
-        """Retorna o robô para a posição inicial (Home)."""
         def _go_home():
             self.em_movimento.set()
             self.update_status.emit("Retornando ao Home...")
-            x, y, z = self.controller.home()
-            if x is not None:
-                self.update_plot.emit(list(x), list(y), list(z), True)
+            self.controller.home()
             self.em_movimento.clear()
             self.update_status.emit("Aguardando comando...")
 
@@ -203,10 +198,9 @@ class RobotGUI(QMainWindow):
             threading.Thread(target=_go_home, daemon=True).start()
 
     def executar_rotina_lapis(self):
-        """Dispara a rotina automatizada em uma thread secundária."""
         def _disparar():
             self.update_status.emit("Executando Pick & Place...")
-            self.controller.rotina_lapis_suporte(plot_callback=self.update_plot.emit)
+            self.controller.rotina_lapis_suporte()
             self.update_status.emit("Rotina concluída!")
 
         if not self.em_movimento.is_set():
