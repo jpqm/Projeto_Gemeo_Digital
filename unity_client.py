@@ -64,11 +64,15 @@ class UnityClient:
                 print(f"[Unity Listener] Conexão encerrada: {e}")
                 break
 
-    def send_angles(self, theta1, theta2, theta3, A, B, C):
-        """Envia os 6 ângulos das juntas ao Unity para espelhar o movimento."""
+    def send_angles(self, theta1, theta2, theta3, A, B, C, duration=None):
+        """Envia os 6 ângulos das juntas ao Unity para espelhar o movimento.
+        Se duration for fornecido, vai como 7º valor (duração do segmento em s)."""
         if self.sock is None:
             return
-        data = f"{theta1},{theta2},{theta3},{A},{B},{C}\n"
+        data = f"{theta1},{theta2},{theta3},{A},{B},{C}"
+        if duration is not None:
+            data += f",{duration}"
+        data += "\n"
         try:
             self.sock.sendall(data.encode("utf-8"))
         except Exception as e:

@@ -79,12 +79,12 @@ class RobotGUI(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         left_panel.setFixedWidth(280)
 
-        # Grupo de Posições (X, Y, Z)
-        group_pos = QGroupBox("Coordenadas Alvo")
+        # Grupo de Ângulos das Juntas (J1-J6, valores GRBL)
+        group_pos = QGroupBox("Ângulos das Juntas")
         grid = QGridLayout()
         self.entradas = {}
 
-        for i, nome in enumerate(["X", "Y", "Z"]):
+        for i, nome in enumerate(["J1", "J2", "J3", "J4", "J5", "J6"]):
             lbl = QLabel(nome)
             lbl.setFixedWidth(30)
             entrada = QLineEdit("0")
@@ -103,7 +103,7 @@ class RobotGUI(QMainWindow):
         left_layout.addWidget(self.status_lbl)
 
         # Botões de Ação
-        btn_enviar = QPushButton("Enviar Trajetória")
+        btn_enviar = QPushButton("Enviar Juntas")
         btn_enviar.setMinimumHeight(40)
         btn_enviar.clicked.connect(self.enviar_pos)
         left_layout.addWidget(btn_enviar)
@@ -151,12 +151,17 @@ class RobotGUI(QMainWindow):
         serial = self.controller.serial
 
         if unity and unity.check_button_pressed():
+            if self.controller.modo_juntas:
+                self.set_status("Modo juntas ativo — pressione Home para retornar")
+                return
+
             j1, j2, j3, j4, j5, j6 = unity.get_current_unity_angles()
 
             print("=" * 50)
             print("[UNITY] Botão 'ENVIAR' pressionado na interface!")
             print(f"[UNITY] Ângulos lidos: J1:{j1} | J2:{j2} | J3:{j3} | J4:{j4} | J5:{j5} | J6:{j6}")
 
+            self.controller.modo_juntas = True
             comando = f"G1 X{j1} Y{j2} Z{-j3} A{j4} B{-j6} C{j5} F800"
             if serial:
                 serial.send(comando)
@@ -164,25 +169,24 @@ class RobotGUI(QMainWindow):
             print("=" * 50)
 
     def enviar_pos(self):
-        """Lê os campos X, Y, Z e dispara a movimentação em thread paralela."""
+        """Lê os campos J1-J6 e dispara o envio do G1 direto em thread paralela."""
         if self.em_movimento.is_set():
             return
         try:
-            valores = [float(self.entradas[nome].text()) for nome in ["X", "Y", "Z"]]
+            valores = [float(self.entradas[nome].text()) for nome in ["J1", "J2", "J3", "J4", "J5", "J6"]]
         except ValueError:
             self.set_status("Erro: valores inválidos")
             return
 
         self.em_movimento.set()
-        self.set_status("Calculando e Executando...")
+        self.set_status("Enviando Juntas...")
         threading.Thread(target=self._executar_movimento, args=(valores,), daemon=True).start()
 
     def _executar_movimento(self, valores):
-        """Executa a movimentação ponto a ponto."""
-        x, y, z = self.controller.calcular_pos(*valores)
-        self.update_plot.emit(list(x), list(y), list(z), True)
+        """Executa o envio dos ângulos das juntas ao GRBL e Unity."""
+        self.controller.enviar_juntas(*valores)
         self.em_movimento.clear()
-        self.update_status.emit("Movimento concluído!")
+        self.update_status.emit("Comando de juntas enviado!")
 
     def home(self):
         """Retorna o robô para a posição inicial (Home)."""
@@ -190,7 +194,8 @@ class RobotGUI(QMainWindow):
             self.em_movimento.set()
             self.update_status.emit("Retornando ao Home...")
             x, y, z = self.controller.home()
-            self.update_plot.emit(list(x), list(y), list(z), True)
+            if x is not None:
+                self.update_plot.emit(list(x), list(y), list(z), True)
             self.em_movimento.clear()
             self.update_status.emit("Aguardando comando...")
 

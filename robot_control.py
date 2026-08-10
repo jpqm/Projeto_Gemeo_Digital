@@ -15,6 +15,7 @@ class RobotController:
         self.P0 = np.array([403.3643, 0, 570.3432])
         self.Ri = np.array([[0, 0, 1], [0, -1, 0], [1, 0, 0]])
         self.base_offset = np.array([-137, 645, 25])
+        self.modo_juntas = False
 
     def interpolar_abc(self, R_ini, P_ini, R_fim, P_fim, n=21):
         """Interpola linearmente os ângulos do pulso (A, B, C) entre a pose inicial e a final."""
@@ -24,27 +25,32 @@ class RobotController:
                 np.round(np.linspace(B0, Bf, n), 2),
                 np.round(np.linspace(C0, Cf, n), 2))
 
-    def executar_movimento(self, x, y, z, A, B, C):
-        """Calcula os ângulos das juntas para cada ponto e envia ao Unity e ao GRBL (G1)."""
+    def executar_movimento(self, x, y, z, A, B, C, feedrate=800):
+        """Calcula os ângulos das juntas para cada ponto, envia ao GRBL (G1) e espelha no
+        Unity com a duração de cada segmento (feedrate linear, F em unidades/min)."""
+        angulos = []
         for i in range(len(x)):
             theta1, theta2, theta3 = ik.calculo_angulos(x[i], y[i], z[i])
-            self.unity.send_angles(theta1, theta2, -theta3, A[i], B[i], -C[i])
-            self.serial.send(f"G1 X{theta1} Y{theta2} Z{theta3} A{A[i]} B{-C[i]} C{B[i]} F800")
+            angulos.append([theta1, theta2, theta3, A[i], -C[i], B[i]])
 
-    def calcular_pos(self, xf, yf, zf):
-        """Move o robô até (xf, yf, zf) gerando uma trajetória Bézier e atualiza o estado atual."""
-        P3_1 = np.array([xf, yf, zf])
-        P3 = P3_1 - self.base_offset
-        Rf = np.array([[0, -1, 0], [-1, 0, 0], [0, 0, -1]])
-        
-        x1, y1, z1 = bz.calculo_pontos(self.P0, P3, self.Ri, Rf)
-        A1, B1, C1 = self.interpolar_abc(self.Ri, self.P0, Rf, P3, 21)
-        
-        self.executar_movimento(x1, y1, z1, A1, B1, C1)
-        self.Ri = Rf
-        self.P0 = P3
+        angulos = np.array(angulos)
+        for i in range(len(angulos)):
+            if i == 0:
+                dur = 0.0
+            else:
+                dist = np.linalg.norm(angulos[i] - angulos[i - 1])
+                dur = dist / feedrate * 60
 
-        return x1, y1, z1
+            theta1, theta2, theta3, A_grbl, B_grbl, C_grbl = angulos[i]
+            self.unity.send_angles(theta1, theta2, -theta3, A[i], B[i], -C[i], round(dur, 3))
+            self.serial.send(f"G1 X{theta1} Y{theta2} Z{theta3} A{A_grbl} B{B_grbl} C{C_grbl} F{feedrate}")
+
+    def enviar_juntas(self, j1, j2, j3, j4, j5, j6):
+        """Envia um G1 direto com os 6 ângulos das juntas (valores GRBL) e espelha no Unity.
+        Ativa o modo juntas: bloqueia trajetórias/rotina até o Home ser usado."""
+        self.modo_juntas = True
+        self.serial.send(f"G1 X{j1} Y{j2} Z{j3} A{j4} B{j6} C{j5} F800")
+        self.unity.send_angles(j1, j2, -j3, j4, j5, j6)
 
     def calcular_tempo_trajetoria(self, x, y, z, theta4, theta5, theta6, feedrate=800, fator_seg=1.2):
         """Estima o tempo (s) da trajetória pela distância percorrida em cada segmento dividida pelo feedrate."""
@@ -65,6 +71,16 @@ class RobotController:
 
     def home(self):
         """Retorna o robô à posição inicial (Home) com trajetória Bézier e atualiza o estado."""
+        if self.modo_juntas:
+            print("Modo juntas ativo — desfazendo último movimento via log (Home).")
+            self.recuperar_do_log()
+            self.P0 = np.array([403.3643, 0, 570.3432])
+            self.Ri = np.array([[0, 0, 1], 
+                                [0, -1, 0], 
+                                [1, 0, 0]])
+            self.modo_juntas = False
+            return None, None, None
+
         P3 = np.array([403.3643, 0, 570.3432])
         Rf = np.array([[0, 0, 1], 
                        [0, -1, 0], 
@@ -110,6 +126,10 @@ class RobotController:
     def rotina_lapis_suporte(self, plot_callback=None):
         """Máquina de estados que pega o lápis da mesa e o encaixa no suporte, desenhando no gráfico quando há callback."""
         import time
+
+        if self.modo_juntas:
+            print("Modo juntas ativo — use o Home para retornar antes de executar a rotina.")
+            return
 
         b = np.array([-137, 645, 25])
         # ---------------------------------------------------------
