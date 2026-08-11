@@ -284,10 +284,8 @@ public class UnityRobotReceiver : MonoBehaviour
                     maxDelta = Mathf.Max(maxDelta, Mathf.Abs(segmentEndAngles[i] - segmentStartAngles[i])); //[cite: 1]
                 }
 
-                float receivedDuration = waypoint.Length > 6 ? waypoint[6] : -1f; //[cite: 1]
-                segmentDuration = receivedDuration >= 0f
-                    ? Mathf.Max(receivedDuration, 0.02f)
-                    : Mathf.Max(maxDelta / maxDegreesPerSecond, 0.02f); //[cite: 1]
+                float receivedFeedrate = waypoint.Length > 6 ? waypoint[6] : maxDegreesPerSecond;
+                segmentDuration = Mathf.Max(maxDelta / Mathf.Max(receivedFeedrate, 0.1f), 0.02f);
 
                 segmentElapsed = 0f; //[cite: 1]
                 hasActiveSegment = true; //[cite: 1]

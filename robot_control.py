@@ -35,21 +35,15 @@ class RobotController:
 
         angulos = np.array(angulos)
         for i in range(len(angulos)):
-            if i == 0:
-                dur = 0.0
-            else:
-                dist = np.linalg.norm(angulos[i] - angulos[i - 1])
-                dur = dist / feedrate * 60
-
             theta1, theta2, theta3, A_grbl, B_grbl, C_grbl = angulos[i]
-            self.unity.send_angles(theta1, theta2, -theta3, A[i], B[i], -C[i], round(dur, 3))
+            self.unity.send_angles(theta1, theta2, -theta3, A[i], B[i], -C[i], feedrate)
             self.serial.send(f"G1 X{theta1} Y{theta2} Z{theta3} A{A_grbl} B{B_grbl} C{C_grbl} F{feedrate}")
 
     def enviar_juntas(self, j1, j2, j3, j4, j5, j6):
         """Envia um G1 direto com os 6 ângulos das juntas (valores GRBL) e espelha no Unity.
         Ativa o modo juntas: bloqueia trajetórias/rotina até o Home ser usado."""
         self.modo_juntas = True
-        self.serial.send(f"G1 X{j1} Y{j2} Z{j3} A{j4} B{j6} C{j5} F800")
+        self.serial.send(f"G1 X{j1} Y{j2} Z{j3} A{j4} B{j6} C{j5} F600")
         self.unity.send_angles(j1, j2, -j3, j4, j5, j6)
 
     def calcular_tempo_trajetoria(self, x, y, z, theta4, theta5, theta6, feedrate=800, fator_seg=1.2):
