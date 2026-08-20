@@ -2,10 +2,13 @@ import threading
 import cv2
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QLineEdit, QPushButton, QGroupBox
+    QLabel, QLineEdit, QPushButton, QGroupBox, QTextEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QImage, QPixmap
+
+from yolo_detector import YOLODetector
+from detection_thread import DetectionThread
 
 CAMERA_INDEX = 1
 CAMERA_TICK_MS = 30
@@ -62,6 +65,8 @@ class RobotGUI(QMainWindow):
         super().__init__()
         self.controller = controller
         self.em_movimento = threading.Event()
+        self.detector = YOLODetector()
+        self.detection_thread = None
 
         self.update_status.connect(self.set_status)
 
@@ -132,6 +137,21 @@ class RobotGUI(QMainWindow):
         btn_fechar = QPushButton("Fechar Garra")
         btn_fechar.clicked.connect(lambda: self.controller.serial.send("M97 B0 T0.2"))
         left_layout.addWidget(btn_fechar)
+
+        btn_reconhecer = QPushButton("Reconhecer (YOLO)")
+        btn_reconhecer.setMinimumHeight(40)
+        btn_reconhecer.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
+        btn_reconhecer.clicked.connect(self.reconhecer)
+        left_layout.addWidget(btn_reconhecer)
+
+        log_group = QGroupBox("Log Deteccao")
+        log_layout = QVBoxLayout(log_group)
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(100)
+        self.log_text.setStyleSheet("background-color: #1e1e1e; color: #0f0; font-family: monospace; font-size: 11px;")
+        log_layout.addWidget(self.log_text)
+        left_layout.addWidget(log_group)
 
         left_layout.addStretch()
 
@@ -205,3 +225,42 @@ class RobotGUI(QMainWindow):
 
         if not self.em_movimento.is_set():
             threading.Thread(target=_disparar, daemon=True).start()
+
+    def reconhecer(self):
+        if self.detection_thread and self.detection_thread.isRunning():
+            self.set_status("Deteccao ja em andamento")
+            return
+        if not self.camera._cap or not self.camera._cap.isOpened():
+            self.set_status("Camera indisponivel")
+            return
+
+        self.camera._timer.stop()
+        self.set_status("Detectando objetos...")
+        self.log_text.append("Iniciando deteccao YOLO...")
+
+        self.detection_thread = DetectionThread(self.camera._cap, self.detector)
+        self.detection_thread.frame_ready.connect(self._on_frame_ready)
+        self.detection_thread.detections_ready.connect(self._on_detections_ready)
+        self.detection_thread.error_occurred.connect(self._on_detection_error)
+        self.detection_thread.finished.connect(self._on_detection_finished)
+        self.detection_thread.start()
+
+    def _on_frame_ready(self, image):
+        self.camera.setPixmap(QPixmap.fromImage(image))
+
+    def _on_detections_ready(self, detections):
+        if not detections:
+            self.log_text.append("Nenhum objeto detectado")
+            return
+        for d in detections:
+            msg = f"Detectado: {d['class']} ({d['confidence']:.2f})"
+            self.log_text.append(msg)
+            print(msg)
+        self.set_status(f"{len(detections)} objeto(s) detectado(s)")
+
+    def _on_detection_error(self, message):
+        self.log_text.append(f"Erro: {message}")
+        self.set_status("Erro na deteccao")
+
+    def _on_detection_finished(self):
+        self.set_status("Deteccao concluida")
