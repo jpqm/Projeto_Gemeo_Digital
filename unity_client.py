@@ -3,9 +3,9 @@ import threading
 
 class UnityClient:
     # ip local: 127.0.0.1
-    # ip wifi: 
+    # ip wifi: 10.117.16.251
     # ip cabo: 
-    def __init__(self, host="10.53.24.153", port=25001):
+    def __init__(self, host="10.117.16.251", port=25001):
         """Guarda host/porta, inicia o estado vazio e tenta conectar ao Unity."""
         self.host = host
         self.port = port

@@ -5,6 +5,8 @@ import bezier as bz
 import ik_craig as ik
 from config import GCODE_LOG
 
+import time
+
 class RobotController:
     def __init__(self, serial_driver, unity_client):
         """Guarda as referências de comunicação e o estado inicial de posição e orientação do robô."""
@@ -43,7 +45,7 @@ class RobotController:
         """Envia um G1 direto com os 6 ângulos das juntas (valores GRBL) e espelha no Unity.
         Ativa o modo juntas: bloqueia trajetórias/rotina até o Home ser usado."""
         self.modo_juntas = True
-        self.serial.send(f"G1 X{j1} Y{j2} Z{j3} A{j4} B{j6} C{j5} F50")
+        self.serial.send(f"G1 X{j1} Y{j2} Z{j3} A{j4} B{j6} C{j5} F800")
         self.unity.send_angles(j1, j2, -j3, j4, j5, j6)
 
     def calcular_tempo_trajetoria(self, x, y, z, theta4, theta5, theta6, feedrate=800, fator_seg=1.2):
@@ -119,7 +121,6 @@ class RobotController:
 
     def rotina_lapis_suporte(self, plot_callback=None):
         """Máquina de estados que pega o lápis da mesa e o encaixa no suporte, desenhando no gráfico quando há callback."""
-        import time
 
         if self.modo_juntas:
             print("Modo juntas ativo — use o Home para retornar antes de executar a rotina.")
@@ -227,3 +228,50 @@ class RobotController:
         # Estado 5: Voltar para Home (Bézier)
         x, y, z = self.home()
         if plot_callback: plot_callback(list(x), list(y), list(z), False)
+
+    def rotina_objeto_mesa(self, plot_callback=None):
+        b = np.array([-137, 645, 25])
+        # ---------------------------------------------------------
+        # 1. DEFINIÇÃO DOS PONTOS E MATRIZES
+        # ---------------------------------------------------------
+        P_lapis = np.array([-300, 210, 0])        # Lápis na mesa
+
+        # Rotações
+        # R1: Garra para baixo (para pegar o lápis deitado)
+        R_baixo = np.array([[ 0,  -1,  0], 
+                            [ -1, 0,  0], 
+                            [ 0,  0, -1]]) 
+
+        P_lapis -= b
+
+        x, y, z = bz.calculo_pontos(self.P0, P_lapis, self.Ri, R_baixo)
+        if plot_callback: plot_callback(list(x), list(y), list(z), True)
+        A, B, C = self.interpolar_abc(self.Ri, self.P0, R_baixo, P_lapis, 21)
+        self.executar_movimento(x, y, z, A, B, C)
+        pausa = self.calcular_tempo_trajetoria(x, y, z, A, B, C)
+        time.sleep(pausa+1)
+        self.serial.send("M97 B0 T0.2") # Fecha a garra
+        time.sleep(1) # Aguarda fechamento
+
+        x, y, z = x[::-1], y[::-1], z[::-1]
+        A, B, C = A[::-1], B[::-1], C[::-1]
+
+        self.executar_movimento(x, y, z, A, B, C)
+        pausa = self.calcular_tempo_trajetoria(x, y, z, A, B, C)
+        time.sleep(pausa+1)
+
+        x, y, z = x[::-1], y[::-1], z[::-1]
+        A, B, C = A[::-1], B[::-1], C[::-1]
+
+        self.executar_movimento(x, y, z, A, B, C)
+        pausa = self.calcular_tempo_trajetoria(x, y, z, A, B, C)
+        time.sleep(pausa+1)
+        self.serial.send("M97 B60 T0.2") # Fecha a garra
+        time.sleep(1) # Aguarda fechamento
+
+        x, y, z = x[::-1], y[::-1], z[::-1]
+        A, B, C = A[::-1], B[::-1], C[::-1]
+
+        self.executar_movimento(x, y, z, A, B, C)
+        pausa = self.calcular_tempo_trajetoria(x, y, z, A, B, C)
+        time.sleep(pausa+1)

@@ -10,6 +10,8 @@ from PyQt6.QtGui import QImage, QPixmap
 from yolo_detector import YOLODetector
 from detection_thread import DetectionThread
 
+import time
+
 CAMERA_INDEX = 1
 CAMERA_TICK_MS = 30
 
@@ -220,7 +222,7 @@ class RobotGUI(QMainWindow):
     def executar_rotina_lapis(self):
         def _disparar():
             self.update_status.emit("Executando Pick & Place...")
-            self.controller.rotina_lapis_suporte()
+            self.controller.rotina_objeto_mesa()
             self.update_status.emit("Rotina concluída!")
 
         if not self.em_movimento.is_set():
@@ -233,6 +235,10 @@ class RobotGUI(QMainWindow):
         if not self.camera._cap or not self.camera._cap.isOpened():
             self.set_status("Camera indisponivel")
             return
+
+        self.controller.enviar_juntas(-110, 0, -20, 0, -105, 0)
+
+        time.sleep(15)
 
         self.camera._timer.stop()
         self.set_status("Detectando objetos...")
