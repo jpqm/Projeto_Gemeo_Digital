@@ -32,7 +32,7 @@ public class UnityRobotReceiver : MonoBehaviour
 
     [Header("Controle de Movimento")]
     public float maxDegreesPerSecond = 60f;
-    public bool manualMode = true; 
+    public bool manualMode = false; 
 
     private Thread thread;
     private TcpListener server;
@@ -270,7 +270,7 @@ public class UnityRobotReceiver : MonoBehaviour
             if (!hasActiveSegment && waypointQueue.Count > 0)
             {
                 float[] waypoint = waypointQueue.Dequeue();
-                float maxDelta = 0f;
+                float sumSquares = 0f;
 
                 for (int i = 0; i < joints.Length && i < 6; i++)
                 {
@@ -281,13 +281,27 @@ public class UnityRobotReceiver : MonoBehaviour
                     float delta = Mathf.DeltaAngle(wrappedPrevious, wrappedNew); //[cite: 1]
                     segmentEndAngles[i] = segmentEndAngles[i] + delta; //[cite: 1]
 
-                    maxDelta = Mathf.Max(maxDelta, Mathf.Abs(segmentEndAngles[i] - segmentStartAngles[i])); //[cite: 1]
+                    sumSquares += delta * delta;
                 }
 
-                float receivedDuration = waypoint.Length > 6 ? waypoint[6] : -1f; //[cite: 1]
-                segmentDuration = receivedDuration >= 0f
-                    ? Mathf.Max(receivedDuration, 0.02f)
-                    : Mathf.Max(maxDelta / maxDegreesPerSecond, 0.02f); //[cite: 1]
+                float totalDistance = Mathf.Sqrt(sumSquares);
+                float feedrate = waypoint.Length > 6 ? waypoint[6] : -1f;
+
+                if (feedrate > 0f)
+                {
+                    segmentDuration = totalDistance > 0.001f
+                        ? Mathf.Max((totalDistance / feedrate) * 60f, 0.02f)
+                        : 0.02f;
+                }
+                else
+                {
+                    float maxDelta = 0f;
+                    for (int i = 0; i < joints.Length && i < 6; i++)
+                    {
+                        maxDelta = Mathf.Max(maxDelta, Mathf.Abs(segmentEndAngles[i] - segmentStartAngles[i]));
+                    }
+                    segmentDuration = Mathf.Max(maxDelta / maxDegreesPerSecond, 0.02f);
+                }
 
                 segmentElapsed = 0f; //[cite: 1]
                 hasActiveSegment = true; //[cite: 1]

@@ -46,7 +46,7 @@ class RobotController:
         Ativa o modo juntas: bloqueia trajetórias/rotina até o Home ser usado."""
         self.modo_juntas = True
         self.serial.send(f"G1 X{j1} Y{j2} Z{j3} A{j4} B{j6} C{j5} F800")
-        self.unity.send_angles(j1, j2, -j3, j4, j5, j6)
+        self.unity.send_angles(j1, j2, -j3, j4, j5, j6, 800)
 
     def calcular_tempo_trajetoria(self, x, y, z, theta4, theta5, theta6, feedrate=800, fator_seg=1.2):
         """Estima o tempo (s) da trajetória pela distância percorrida em cada segmento dividida pelo feedrate."""
